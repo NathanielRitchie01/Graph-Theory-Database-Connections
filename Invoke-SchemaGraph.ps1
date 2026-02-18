@@ -63,7 +63,8 @@ function Load-Json {
             Write-Host "  Fetching $Name..." -ForegroundColor DarkGray -NoNewline
             $ProgressPreference = 'SilentlyContinue'
             $response = Invoke-WebRequest -Uri $Source -UseBasicParsing -ErrorAction Stop
-            $content  = $response.Content
+            $content = [System.Text.Encoding]::UTF8.GetString($response.RawContentBytes)
+            # $content  = $response.Content
             Write-Host " OK" -ForegroundColor Green
         } else {
             if (-not (Test-Path $Source)) {
