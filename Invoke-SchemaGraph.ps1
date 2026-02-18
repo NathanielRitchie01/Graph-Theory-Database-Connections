@@ -2,20 +2,24 @@
 #  Invoke-SchemaGraph.ps1
 #  Interactive graph traversal tool for MIS database schema
 #
-#  USAGE:
+#  USAGE (local files):
 #    PowerShell -ExecutionPolicy Bypass -File ".\Invoke-SchemaGraph.ps1"
 #
-#  REQUIRES (in same folder or specify paths below):
-#    schema.json
-#    edges.json
-#    config.json
+#  USAGE (live from GitHub - no files saved to disk):
+#    PowerShell -ExecutionPolicy Bypass -File ".\Invoke-SchemaGraph.ps1" -FromGitHub
+#
+#  GitHub raw base URL is set below. Update if repo moves.
 # ============================================================
 
 param(
+    [switch]$FromGitHub,
     [string]$SchemaPath = ".\schema.json",
     [string]$EdgesPath  = ".\edges.json",
     [string]$ConfigPath = ".\config.json"
 )
+
+# Raw GitHub
+$GITHUB_RAW = "https://raw.githubusercontent.com/NathanielRitchie01/Graph-Theory-Database-Connections/main"
 
 # ── Console Helpers ──────────────────────────────────────────
 
@@ -49,19 +53,34 @@ function Pause-ForKey {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
 
-# ── Load JSON Files ──────────────────────────────────────────
+# ── Load JSON (file or URL) ──────────────────────────────────
 
-function Load-JsonFile {
-    param([string]$Path, [string]$Name)
-    if (-not (Test-Path $Path)) {
-        Write-Host "  ERROR: Cannot find $Name at: $Path" -ForegroundColor Red
-        Write-Host "  Make sure you run Build-GraphFiles.ps1 first." -ForegroundColor Yellow
-        exit 1
-    }
+function Load-Json {
+    param([string]$Source, [string]$Name)
+
     try {
-        return Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($Source -like "http*") {
+            Write-Host "  Fetching $Name..." -ForegroundColor DarkGray -NoNewline
+            $ProgressPreference = 'SilentlyContinue'
+            $response = Invoke-WebRequest -Uri $Source -UseBasicParsing -ErrorAction Stop
+            $content  = $response.Content
+            Write-Host " OK" -ForegroundColor Green
+        } else {
+            if (-not (Test-Path $Source)) {
+                Write-Host ""
+                Write-Host "  ERROR: Cannot find $Name at: $Source" -ForegroundColor Red
+                Write-Host "  Run Build-GraphFiles.ps1 first, or use -FromGitHub to load live." -ForegroundColor Yellow
+                exit 1
+            }
+            $content = Get-Content $Source -Raw -Encoding UTF8
+        }
+        return $content | ConvertFrom-Json
     } catch {
-        Write-Host "  ERROR: Failed to parse $Name - $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "  ERROR: Failed to load $Name - $($_.Exception.Message)" -ForegroundColor Red
+        if ($Source -like "http*") {
+            Write-Host "  Check your internet connection and that the repo is public." -ForegroundColor Yellow
+        }
         exit 1
     }
 }
@@ -772,11 +791,28 @@ function Show-MainMenu {
 # ── Entry Point ──────────────────────────────────────────────
 
 Clear-Host
+Write-Host ""
+Write-Host "  MIS Database Schema Graph Tool" -ForegroundColor Cyan
 
-# Load files
-$schema  = Load-JsonFile -Path $SchemaPath -Name "schema.json"
-$edges   = Load-JsonFile -Path $EdgesPath  -Name "edges.json"
-$config  = Load-JsonFile -Path $ConfigPath -Name "config.json"
+# Resolve sources — GitHub URLs or local file paths
+if ($FromGitHub) {
+    Write-Host "  Mode: Live from GitHub" -ForegroundColor DarkGray
+    Write-Host ""
+    $schemaSource = "$GITHUB_RAW/schema.json"
+    $edgesSource  = "$GITHUB_RAW/edges.json"
+    $configSource = "$GITHUB_RAW/config.json"
+} else {
+    Write-Host "  Mode: Local files" -ForegroundColor DarkGray
+    Write-Host ""
+    $schemaSource = $SchemaPath
+    $edgesSource  = $EdgesPath
+    $configSource = $ConfigPath
+}
+
+# Load — same function handles both modes
+$schema = Load-Json -Source $schemaSource -Name "schema.json"
+$edges  = Load-Json -Source $edgesSource  -Name "edges.json"
+$config = Load-Json -Source $configSource -Name "config.json"
 
 # Settings
 $includeMirror = if ($null -ne $config.include_mirror_edges) { [bool]$config.include_mirror_edges } else { $true }
